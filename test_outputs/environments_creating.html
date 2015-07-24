@@ -1,0 +1,172 @@
+
+<div class="real-paragraph"> <p class="temp-sentence">For more info about what environments do, see <a href="./environments.html">About Directory Environments.</a></p>
+</div>
+
+<h2 id="structure-of-an-environment">Structure of an Environment</h2>
+
+<div class="real-paragraph"> <p class="temp-sentence">An environment is just a directory that follows a few conventions:</p>
+</div>
+
+<ul>
+<li>The directory name is the environment name.</li>
+  <li>It must be located on the Puppet master server(s) in one of the <code>environmentpath</code> directories, usually <code>$codedir/environments</code>. (See <a href="./environments_configuring.html#environmentpath">the <code>environmentpath</code> section of the configuring environments page.</a>)</li>
+  <li>It should contain a <code>modules</code> directory. If present, it will become part of the environment’s default <code>modulepath</code>.</li>
+  <li>It should contain a <code>manifests</code> directory, which will be the environment’s default <a href="./dirs_manifest.html">main manifest.</a>
+</li>
+  <li>It may contain <a href="./config_file_environment.html">an <code>environment.conf</code> file</a>, which can locally override several settings, including <code>modulepath</code> and <code>manifest</code>.</li>
+</ul><div class="real-paragraph"> <p class="temp-sentence"><img src="./images/environment_directories.svg" alt="Diagram: A directory with four environments.&lt;/p&gt; &lt;p class=" temp-sentence>Each environment contains a modules directory, a manifests directory, and an environment.conf file.</p> <p class="temp-sentence">"&gt;</p>
+</div>
+
+<h2 id="puppet-enterprise-requirements">Puppet Enterprise Requirements</h2>
+
+<div class="real-paragraph"> <p class="temp-sentence">With Puppet Enterprise (PE), <strong>every</strong> environment must meet two extra requirements.</p>
+</div>
+
+<h3 id="filebucket-resource-in-main-manifest">Filebucket Resource in Main Manifest</h3>
+
+<div class="real-paragraph"> <p class="temp-sentence">The <a href="./dirs_manifest.html">main manifest</a> <strong>must</strong> contain the following snippet of Puppet code, which PE uses to back up file contents:</p>
+</div>
+
+<pre><code class="language-ruby">    # Define filebucket 'main':
+    filebucket { 'main':
+      server =&gt; '&lt;YOUR SERVER HERE&gt;',
+      path   =&gt; false,
+    }
+
+    # Make filebucket 'main' the default backup location for all File resources:
+    File { backup =&gt; 'main' }
+</code></pre>
+
+<div class="real-paragraph"> <p class="temp-sentence">You should do the following to ensure this is present:</p>
+</div>
+
+<ul>
+<li>Make sure you set <code>default_manifest = $codedir/manifests</code> in <a href="./config_file_main.html">puppet.conf</a>. This will provide the necessary code to any environments that don’t override their main manifest in <a href="./config_file_environment.html">environment.conf</a>.</li>
+  <li>If any environments <strong>do</strong> provide their own main manifests, make sure you copy this code from the <code>/etc/puppetlabs/code/manifests/site.pp</code> file into some file in their manifests directory.</li>
+</ul><h3 id="modulepath-includes-optpuppetlabspuppetmodules">Modulepath Includes <code>/opt/puppetlabs/puppet/modules</code>
+</h3>
+
+<div class="real-paragraph"> <p class="temp-sentence">The <a href="./dirs_modulepath.html">modulepath</a> <strong>must</strong> include the <code>/opt/puppetlabs/puppet/modules</code> directory, since PE uses modules in that directory to configure orchestration and other features.</p>
+</div>
+
+<ul>
+<li>If you <strong>upgraded</strong> from a previous version of PE instead of doing a fresh install, make sure to set <code>basemodulepath = $codedir/modules:/opt/puppetlabs/puppet/modules</code> in <a href="./config_file_main.html">puppet.conf</a>. This will include the system modules in the <strong>default</strong> modulepath for every environment. If you installed PE 3.8 or higher from scratch, this path is already set by default.</li>
+  <li>If you use <a href="./config_file_environment.html">environment.conf</a> to override the modulepath (see below), make sure it includes either <code>$basemodulepath</code> or <code>/opt/puppetlabs/puppet/modules</code>.</li>
+</ul><h2 id="allowed-environment-names">Allowed Environment Names</h2>
+
+<div class="real-paragraph"> <p class="temp-sentence">Environment names can contain lowercase letters, numbers, and underscores.</p> <p class="temp-sentence">That is, they must match the following regular expression:</p>
+</div>
+
+<div class="real-paragraph"> <p class="temp-sentence"><code>\A[a-z0-9_]+\Z</code></p>
+</div>
+
+<h2 id="what-environments-provide">What Environments Provide</h2>
+
+<div class="real-paragraph"> <p class="temp-sentence">An environment can define three resources the Puppet master will use when compiling catalogs for agent nodes:</p>
+</div>
+
+<ul>
+<li>The modulepath</li>
+  <li>The main manifest</li>
+  <li>The config version script</li>
+</ul><h3 id="the-modulepath">The Modulepath</h3>
+
+<div class="real-paragraph"> <p class="temp-sentence">The <strong>modulepath</strong> is the list of directories Puppet will load modules from.</p> <p class="temp-sentence">See <a href="./dirs_modulepath.html">the reference page on the modulepath</a> for more details about how Puppet uses it.</p>
+</div>
+
+<h4 id="the-default-modulepath">The Default Modulepath</h4>
+
+<div class="real-paragraph"> <p class="temp-sentence"><strong>By default,</strong> the effective modulepath for a given environment will be:</p>
+</div>
+
+<pre><code>&lt;MODULES DIRECTORY FROM ENVIRONMENT&gt;:$basemodulepath
+</code></pre>
+
+<div class="real-paragraph"> <p class="temp-sentence">That is, Puppet will add the environment’s <code>modules</code> directory to the value of the <a href="/references/4.2.latest/configuration.html#basemodulepath"><code>basemodulepath</code> setting</a> from <a href="./config_file_main.html">puppet.conf</a>, with the environment’s modules getting priority.</p> <p class="temp-sentence">If the <code>modules</code> directory is empty or absent, Puppet will only use modules from directories in the <code>basemodulepath</code>.</p>
+</div>
+
+<h4 id="configuring-the-modulepath">Configuring the Modulepath</h4>
+
+<div class="real-paragraph"> <p class="temp-sentence">You can configure a different modulepath for an environment by setting <code>modulepath</code> in its <a href="./config_file_environment.html">environment.conf</a> file.</p> <p class="temp-sentence">Note that the global <code>modulepath</code> setting from <a href="./config_file_main.html">puppet.conf</a> will never be used by an environment.</p>
+</div>
+
+<div class="real-paragraph"> <p class="temp-sentence"><strong>Note:</strong> The <code>modulepath</code> should almost always include <code>$basemodulepath</code>, and if you’re using PE, it <strong>must</strong> include <code>/opt/puppetlabs/puppet/modules</code>.</p> <p class="temp-sentence">(<a href="#puppet-enterprise-requirements">See above.</a>) This path is included in the <code>basemodulepath</code> by default in PE 3.8.</p>
+</div>
+
+<h4 id="checking-the-modulepath">Checking the Modulepath</h4>
+
+<div class="real-paragraph"> <p class="temp-sentence">You can view an environment’s effective modulepath by specifying the environment when <a href="./config_print.html">requesting the setting value</a>:</p>
+</div>
+
+<pre><code>$ sudo puppet config print modulepath --section master --environment test
+/etc/puppetlabs/code/environments/test/modules:/etc/puppetlabs/code/modules:/opt/puppetlabs/puppet/modules
+</code></pre>
+
+<h3 id="the-main-manifest">The Main Manifest</h3>
+
+<div class="real-paragraph"> <p class="temp-sentence">The <strong>main manifest</strong> is Puppet’s starting point for compiling a catalog.</p> <p class="temp-sentence">See <a href="./dirs_manifest.html">the reference page on the main manifest</a> for more details.</p>
+</div>
+
+<h4 id="the-default-main-manifest">The Default Main Manifest</h4>
+
+<div class="real-paragraph"> <p class="temp-sentence">Unless you say otherwise in <a href="./config_file_environment.html">environment.conf</a>, an environment will use Puppet’s global <a href="/references/4.2.latest/configuration.html#defaultmanifest"><code>default_manifest</code> setting</a> to determine its main manifest.</p>
+</div>
+
+<div class="real-paragraph"> <p class="temp-sentence">The value of this setting can be an <strong>absolute path</strong> to a manifest that all environments will share, or a <strong>relative path</strong> to a file or directory inside each environment.</p>
+</div>
+
+<div class="real-paragraph"> <p class="temp-sentence">The default value of <code>default_manifest</code> is <code>./manifests</code> — that is, the environment’s own <code>manifests</code> directory.</p>
+</div>
+
+<div class="real-paragraph"> <p class="temp-sentence">If the file or directory specified by <code>default_manifest</code> is empty or absent, Puppet will <strong>not</strong> fall back to any other manifest; instead, it will behave as though you used a totally blank main manifest.</p> <p class="temp-sentence">Note that the global <code>manifest</code> setting from <a href="./config_file_main.html">puppet.conf</a> will never be used by an environment.</p>
+</div>
+
+<h4 id="configuring-the-main-manifest">Configuring the Main Manifest</h4>
+
+<div class="real-paragraph"> <p class="temp-sentence">You can configure a different main manifest for an environment by setting <code>manifest</code> in its <a href="./config_file_environment.html">environment.conf</a> file.</p>
+</div>
+
+<div class="real-paragraph"> <p class="temp-sentence">As with the global <code>default_manifest</code> setting, you can specify a relative path (to be resolved within the environment’s directory) or an absolute path.</p>
+</div>
+
+<div class="real-paragraph"> <p class="temp-sentence"><strong>Note:</strong> If you are using Puppet Enterprise, you <strong>must</strong> ensure that the default filebucket resource is included in the main manifest.</p> <p class="temp-sentence">(<a href="#puppet-enterprise-requirements">See above.</a>)</p>
+</div>
+
+<h4 id="locking-the-main-manifest">Locking the Main Manifest</h4>
+
+<div class="real-paragraph"> <p class="temp-sentence">If you want to prevent any environment from setting its own main manifest, you can lock all environments to a single global manifest with <a href="/references/4.2.latest/configuration.html#disableperenvironmentmanifest">the <code>disable_per_environment_manifest</code> setting.</a> For details, see <a href="/references/4.2.latest/configuration.html#disableperenvironmentmanifest">the docs for this setting.</a></p>
+</div>
+
+<h3 id="the-config-version-script">The Config Version Script</h3>
+
+<div class="real-paragraph"> <p class="temp-sentence">Puppet automatically adds a <strong>config version</strong> to every catalog it compiles, as well as to messages in reports.</p> <p class="temp-sentence">The version is an arbitrary piece of data that can be used to identify catalogs and events.</p>
+</div>
+
+<h4 id="the-default-config-version">The Default Config Version</h4>
+
+<div class="real-paragraph"> <p class="temp-sentence">By default, the config version will be the <strong>time</strong> at which the catalog was compiled (as the number of seconds since January 1, 1970).</p>
+</div>
+
+<h4 id="configuring-the-config-version">Configuring the Config Version</h4>
+
+<div class="real-paragraph"> <p class="temp-sentence">You can specify an executable script that will determine an environment’s config version by setting <code>config_version</code> in its <a href="./config_file_environment.html">environment.conf</a> file.</p> <p class="temp-sentence">Puppet will run this script when compiling a catalog for a node in the environment, and use its output as the config version.</p> <p class="temp-sentence">Note that the global <code>config_version</code> setting from <a href="./config_file_main.html">puppet.conf</a> will never be used by an environment.</p>
+</div>
+
+<div class="real-paragraph"> <p class="temp-sentence"><strong>Note:</strong> If you’re using a system binary like <code>git rev-parse</code>, make sure to specify the absolute path to it!</p> <p class="temp-sentence">If <code>config_version</code> is set to a relative path, Puppet will look for the binary <em>in the environment,</em> not in the system’s <code>PATH</code>.</p>
+</div>
+
+<h2 id="the-environmentconf-file">The <code>environment.conf</code> File</h2>
+
+<div class="real-paragraph"> <p class="temp-sentence">An environment can contain an <code>environment.conf</code> file, which can override values for certain settings.</p>
+</div>
+
+<div class="real-paragraph"> <p class="temp-sentence">In this version of Puppet, the environment.conf file is only allowed to override five settings:</p>
+</div>
+
+<ul>
+<li><code>modulepath</code></li>
+  <li><code>manifest</code></li>
+  <li><code>config_version</code></li>
+  <li><code>environment_timeout</code></li>
+</ul><div class="real-paragraph"> <p class="temp-sentence">See <a href="./config_file_environment.html">the page on <code>environment.conf</code> for more details.</a></p>
+</div>
