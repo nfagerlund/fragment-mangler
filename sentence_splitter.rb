@@ -10,7 +10,9 @@ all_paragraphs = parsed.css('p')
 
 
 all_paragraphs.each do |graf|
-  graf.inner_html = tokenizer.sentences_from_text(graf.inner_html, :output => :sentences_text).join(' </p><p class="temporary"> ')
+  sentences = tokenizer.sentences_from_text(graf.inner_html, :output => :sentences_text)
+  new_div = '<div class="real-paragraph"> <p class="temp-sentence">' << sentences.join('</p> <p class="temp-sentence">') << '</p></div>'
+  graf.replace(new_div)
 end
 
 print parsed.to_html
