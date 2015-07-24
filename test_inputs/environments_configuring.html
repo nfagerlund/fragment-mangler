@@ -1,0 +1,85 @@
+
+<h2 id="global-settings-for-configuring-environments">Global Settings for Configuring Environments</h2>
+
+<p>Puppet uses five settings in <a href="./config_file_main.html">puppet.conf</a> to configure the behavior of environments:</p>
+
+<ul>
+  <li><a href="/references/4.2.latest/configuration.html#environmentpath"><code>environmentpath</code></a> is the list of directories where Puppet will look for environments.</li>
+  <li><a href="/references/4.2.latest/configuration.html#basemodulepath"><code>basemodulepath</code></a> lists directories of global modules that all environments can access by default.</li>
+  <li><a href="/references/4.2.latest/configuration.html#defaultmanifest"><code>default_manifest</code></a> specifies the main manifest for any environment that doesn’t set a <code>manifest</code> value in <a href="./config_file_environment.html">environment.conf</a>.</li>
+  <li><a href="/references/4.2.latest/configuration.html#disableperenvironmentmanifest"><code>disable_per_environment_manifest</code></a> lets you specify that <strong>all</strong> environments should use a shared main manifest. This requires <code>default_manifest</code> to be set to an absolute path.</li>
+  <li><a href="/references/4.2.latest/configuration.html#environmenttimeout"><code>environment_timeout</code></a> sets how often the Puppet will refresh information about environments. It can be overridden per-environment.</li>
+</ul>
+
+<h2 id="environmentpath"><code>environmentpath</code></h2>
+
+<p>The Puppet master will only look for environments in certain directories, listed by <a href="/references/4.2.latest/configuration.html#environmentpath">the <code>environmentpath</code> setting</a> in puppet.conf. The default value for <code>environmentpath</code> is <code>$codedir/environments</code>. (<a href="./dirs_codedir.html">See here for info on the codedir</a>.)</p>
+
+<p>If you need to manage environments in multiple directories, you can set <code>environmentpath</code> to a colon-separated list of directories. (For example: <code>$codedir/temporary_environments:$codedir/environments</code>.) When looking for an environment, Puppet will search these directories in order, with earlier directories having precedence.</p>
+
+<p>Note that if multiple copies of a given environment exist in the <code>environmentpath</code>, Puppet will use the first one. It won’t use any content from the other copies.</p>
+
+<p>The <code>environmentpath</code> setting should usually be set in the <code>[main]</code> section of <a href="./config_file_main.html">puppet.conf</a>.</p>
+
+<h2 id="basemodulepath"><code>basemodulepath</code></h2>
+
+<p>Although environments should contain their own modules, you might want some modules to be available to all environments.</p>
+
+<p><a href="/references/4.2.latest/configuration.html#basemodulepath">The <code>basemodulepath</code> setting</a> configures the global module directories. By default, it includes <code>$codedir/modules</code> for user-accessible modules and <code>/opt/puppetlabs/puppet/modules</code> for system modules. </p>
+
+<p>To add additional directories containing global modules, you can set your own value for <code>basemodulepath</code>. See <a href="./dirs_modulepath.html">the page on the modulepath</a> for more details.</p>
+
+<blockquote>
+  <p><strong>Note:</strong> In Puppet Enterprise, the <code>basemodulepath</code> must <em>always</em> include the system module directory.</p>
+</blockquote>
+
+<h2 id="defaultmanifest"><code>default_manifest</code></h2>
+
+<p><a href="/references/4.2.latest/configuration.html#defaultmanifest">(See also: Full description of <code>default_manifest</code> setting.)</a></p>
+
+<p>The default <a href="./dirs_manifest.html">main manifest</a> to use for environments that don’t specify a manifest in <a href="./config_file_environment.html">environment.conf</a>.</p>
+
+<p>The default value of <code>default_manifest</code> is <code>./manifests</code> — that is, the environment’s own <code>manifests</code> directory. (In Puppet versions prior to 3.7, this wasn’t configurable.)</p>
+
+<p>The value of this setting can be:</p>
+
+<ul>
+  <li>An absolute path to one manifest that all environments will share</li>
+  <li>A relative path to a file or directory inside each environment’s directory</li>
+</ul>
+
+<h2 id="disableperenvironmentmanifest"><code>disable_per_environment_manifest</code></h2>
+
+<p>Setting <code>disable_per_environment_manifest = true</code> will cause Puppet to use the same global manifest for every environment. If an environment specifies a different manifest in <a href="./config_file_environment.html">environment.conf</a>, Puppet will refuse to compile catalogs nodes in that environment (to avoid serving catalogs with potentially wrong contents).</p>
+
+<p>This requires <code>default_manifest</code> to be an absolute path.</p>
+
+<h2 id="environmenttimeout"><code>environment_timeout</code></h2>
+
+<p><a href="/references/4.2.latest/configuration.html#environmenttimeout">(See also: Full description of <code>environment_timeout</code> setting.)</a></p>
+
+<p>How long the Puppet master should cache the data it loads from an environment. For performance reasons, we recommend changing this setting once you have a mature code deployment process.</p>
+
+<p>This setting defaults to <code>0</code> (caching disabled), which lowers the performance of your Puppet master but makes it easy for new users to deploy updated Puppet code.</p>
+
+<p>For best performance, you should:</p>
+
+<ul>
+  <li>Set <code>environment_timeout = unlimited</code> in puppet.conf.</li>
+  <li>Change your code deployment process to refresh the Puppet master whenever you deploy updated code. (For example, set a <code>postrun</code> command in your r10k config or add a step to your CI job.)
+    <ul>
+      <li>With Puppet Server, refresh environments by <a href="/puppetserver/latest/admin-api/v1/environment-cache.html">calling the <code>environment-cache</code> API endpoint.</a> You may need to allow access in <a href="/puppetserver/latest/configuration.html#puppetserverconf">puppetserver.conf</a>’s <code>puppet-admin</code> section.</li>
+      <li>With a Rack Puppet master, restart the web server or the
+application server. Passenger lets you touch a <code>restart.txt</code> file to
+refresh an application without restarting Apache; see the <a href="/guides/passenger.html">Passenger docs</a>
+for details.</li>
+    </ul>
+  </li>
+</ul>
+
+<p>This setting can be overridden per-environment in <a href="./config_file_environment.html">environment.conf</a>, but most users should avoid doing that.</p>
+
+<blockquote>
+  <p><strong>Note:</strong> We don’t recommend using any value other than <code>0</code> or <code>unlimited</code>, since most Puppet masters use a pool of Ruby interpreters which all have their own cache timers. When these timers drift out of sync, agents can be served inconsistent catalogs. To avoid that inconsistency, you have to refresh your Puppet master when deploying anyway, which means there’s no benefit to not using <code>unlimited</code>.</p>
+</blockquote>
+

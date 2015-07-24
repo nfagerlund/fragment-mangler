@@ -1,0 +1,460 @@
+
+<p><strong>Classes</strong> are named blocks of Puppet code, which are stored in <a href="./modules_fundamentals.html">modules</a> for later use and are not applied until they are invoked by name. They can be added to a node’s <a href="./lang_summary.html#compilation-and-catalogs">catalog</a> by either <strong>declaring</strong> them in your manifests or by <strong>assigning</strong> them from an <a href="/guides/external_nodes.html">ENC</a>.</p>
+
+<p>Classes generally configure large or medium-sized chunks of functionality, such as all of the packages, config files, and services needed to run an application.</p>
+
+<h2 id="defining-classes">Defining Classes</h2>
+
+<p>Defining a class makes it available for later use. It doesn’t yet add any resources to the catalog; to do that, you must <a href="#declaring-classes">declare it (see below)</a> or <a href="/guides/external_nodes.html">assign it from an ENC</a>.</p>
+
+<h3 id="syntax">Syntax</h3>
+
+<pre><code class="language-ruby"># A class with no parameters
+class base::linux {
+  file { '/etc/passwd':
+    owner =&gt; 'root',
+    group =&gt; 'root',
+    mode  =&gt; '0644',
+  }
+  file { '/etc/shadow':
+    owner =&gt; 'root',
+    group =&gt; 'root',
+    mode  =&gt; '0440',
+  }
+}
+</code></pre>
+
+<pre><code class="language-ruby"># A class with parameters
+class apache (String $version = 'latest') {
+  package {'httpd':
+    ensure =&gt; $version, # Using the class parameter from above
+    before =&gt; File['/etc/httpd.conf'],
+  }
+  file {'/etc/httpd.conf':
+    ensure  =&gt; file,
+    owner   =&gt; 'httpd',
+    content =&gt; template('apache/httpd.conf.erb'), # Template from a module
+  }
+  service {'httpd':
+    ensure    =&gt; running,
+    enable    =&gt; true,
+    subscribe =&gt; File['/etc/httpd.conf'],
+  }
+}
+</code></pre>
+
+<p>The general form of a class definition is:</p>
+
+<ul>
+  <li>The <code>class</code> keyword</li>
+  <li>The <a href="./lang_reserved.html#classes-and-types">name</a> of the class</li>
+  <li>An optional <strong>parameter list,</strong> which consists of:
+    <ul>
+      <li>An opening parenthesis</li>
+      <li>A comma-separated list of <strong>parameters</strong> (e.g. <code>String $myparam = "default value"</code>). Each parameter consists of:
+        <ul>
+          <li>An optional <a href="./lang_data_type.html">data type</a>, which will restrict the allowed values for the parameter (defaults to <code>Any</code>)</li>
+          <li>A <a href="./lang_variables.html">variable</a> name to represent the parameter, including the <code>$</code> prefix</li>
+          <li>An optional equals (<code>=</code>) sign and <strong>default value</strong> (which must match the data type, if one was specified)</li>
+        </ul>
+      </li>
+      <li>An optional trailing comma after the last parameter</li>
+      <li>A closing parenthesis</li>
+    </ul>
+  </li>
+  <li>Optionally, the <code>inherits</code> keyword followed by a single class name</li>
+  <li>An opening curly brace</li>
+  <li>A block of arbitrary Puppet code, which generally contains at least one <a href="./lang_resources.html">resource declaration</a></li>
+  <li>A closing curly brace</li>
+</ul>
+
+<h3 id="class-parameters-and-variables">Class Parameters and Variables</h3>
+
+<p><strong>Parameters</strong> allow a class to request external data. If a class needs to configure itself with data other than <a href="./lang_variables.html#facts-and-built-in-variables">facts</a>, that data should usually enter the class via a parameter.</p>
+
+<p>Each class parameter can be used as a normal <a href="./lang_variables.html">variable</a> inside the class definition. The values of these variables are not set with <a href="./lang_variables.html#assignment">normal assignment statements</a> or looked up from top or node scope; instead, they are <a href="#include-like-vs-resource-like">set based on user input when the class is declared</a>.</p>
+
+<p>Note that if a class parameter lacks a default value, the user of the module <strong>must</strong> set a value themselves (either in their <a href="/hiera/latest/puppet.html">external data</a> or an <a href="#using-resource-like-declarations">override</a>). As such, you should supply defaults wherever possible.</p>
+
+<p>Each parameter can be preceeded by an optional <a href="./lang_data_type.html"><strong>data type</strong></a>. If you include one, Puppet will check the parameter’s value at runtime to make sure that it has the right data type, and raise an error if the value is illegal. If no data type is provided, the parameter will accept values of any data type.</p>
+
+<p>The special variables <code>$title</code> and <code>$name</code> are both set to the class name automatically, so they can’t be used as parameters.</p>
+
+<h3 id="location">Location</h3>
+
+<p>Class definitions should be stored in <a href="./modules_fundamentals.html">modules</a>. Puppet is <strong>automatically aware</strong> of classes in modules and can autoload them by name.</p>
+
+<p>Classes should be stored in their module’s <code>manifests/</code> directory as one class per file, and each filename should reflect the name of its class; see <a href="./modules_fundamentals.html">Module Fundamentals</a> and <a href="./lang_namespaces.html">Namespaces and Autoloading</a> for more details.</p>
+
+<p>A class definition statement isn’t an expression, and can’t be used where a value is expected.</p>
+
+<blockquote>
+  <h4 id="other-locations">Other Locations</h4>
+
+  <p>Most users should <strong>only</strong> put classes in individual files in modules. However, it’s technically possible to put classes in the following additional locations and still load the class by name:</p>
+
+  <ul>
+    <li><a href="./dirs_manifest.html">The main manifest</a>. If you do so, they can be placed anywhere in the main manifest file(s) and are not evaluation-order dependent. (That is, you can safely declare a class before it’s defined.)</li>
+    <li>A file in the same module whose corresponding class name is a truncated version of this class’s name. That is, the class <code>first::second::third</code> could be put in <code>first::second</code>’s file, <code>first/manifests/second.pp</code>.</li>
+    <li>Lexically inside another class definition. This puts the interior class under the exterior class’s <a href="./lang_namespaces.html">namespace</a>, causing its real name to be something other than the name with which it was defined. (For example: in <code>class first { class second { ... } }</code>, the interior class’s real name is <code>first::second</code>.) Note that this doesn’t cause the interior class to be automatically declared along with the exterior class.</li>
+  </ul>
+
+  <p>Again: You should basically never do these.</p>
+</blockquote>
+
+<h3 id="containment">Containment</h3>
+
+<p>A class <a href="./lang_containment.html">contains</a> all of its resources. This means any <a href="./lang_relationships.html">relationships</a> formed with the class as a whole will be extended to every resource in the class.</p>
+
+<p>Classes can also contain other classes, but <em>you must manually specify that a class should be contained.</em> For details, <a href="./lang_containment.html#containing-classes">see the “Containing Classes” section of the Containment page.</a></p>
+
+<p>A contained class is automatically <a href="./lang_tags.html">tagged</a> with the name of its container.</p>
+
+<h3 id="auto-tagging">Auto-Tagging</h3>
+
+<p>Every resource in a class gets automatically <a href="./lang_tags.html">tagged</a> with the class’s name (and each of its <a href="./lang_namespaces.html">namespace segments</a>).</p>
+
+<h3 id="inheritance">Inheritance</h3>
+
+<p>Classes can be derived from other classes using the <code>inherits</code> keyword. This allows you to make special-case classes that extend the functionality of a more general “base” class.</p>
+
+<p>If a base class has parameters, those parameters must either have default values, or have their values supplied by automatic external data lookup. You can’t specify values in the Puppet language for parameters in an inherited class.</p>
+
+<p>Inheritance causes three things to happen:</p>
+
+<ul>
+  <li>When a derived class is declared, its base class is automatically declared <strong>first</strong> (if it wasn’t already declared elsewhere).</li>
+  <li>The base class becomes the <a href="./lang_scope.html#scope-lookup-rules">parent scope</a> of the derived class, so that the new class receives a copy of all of the base class’s variables and resource defaults.</li>
+  <li>Code in the derived class is given special permission to override any resource attributes that were set in the base class.</li>
+</ul>
+
+<blockquote>
+  <h4 id="aside-when-to-inherit">Aside: When to Inherit</h4>
+
+  <p>Class inheritance should be used <strong>very sparingly,</strong> generally only in the following situations:</p>
+
+  <ul>
+    <li>When you need to override resource attributes in the base class.</li>
+    <li>
+      <p>To let a “params class” provide default values for another class’s parameters:</p>
+
+      <pre><code>class example (String $my_param = $example::params::myparam) inherits example::params { ... }
+</code></pre>
+
+      <p>This pattern works by guaranteeing that the params class is evaluated before Puppet attempts to evaluate the main class’s parameter list. It is especially useful when you want your default values to change based on system facts and other data, since it lets you isolate and encapsulate all that conditional logic.</p>
+    </li>
+  </ul>
+
+  <p><strong>In nearly all other cases, inheritance is unnecessary complexity.</strong> If you need some class’s resources declared before proceeding further, you can <a href="#using-include">include</a> it inside another class’s definition. If you need to read internal data from another class, you should generally use <a href="./lang_variables.html#accessing-out-of-scope-variables">qualified variable names</a> instead of assigning parent scopes. If you need to use an “anti-class” pattern (e.g. to disable a service that is normally enabled), you can use a class parameter to override the standard behavior.</p>
+
+  <p>Note also that you can <a href="./lang_resources_advanced.html#amending-attributes-with-a-collector">use resource collectors to override resource attributes</a> in unrelated classes, although this feature should be handled with care.</p>
+</blockquote>
+
+<h4 id="overriding-resource-attributes">Overriding Resource Attributes</h4>
+
+<p>The attributes of any resource in the base class can be overridden with a <a href="./lang_data_resource_reference.html">reference</a> to the resource you wish to override, followed by a set of curly braces containing attribute =&gt; value pairs:</p>
+
+<pre><code class="language-ruby">class base::freebsd inherits base::unix {
+  File['/etc/passwd'] {
+    group =&gt; 'wheel'
+  }
+  File['/etc/shadow'] {
+    group =&gt; 'wheel'
+  }
+}
+</code></pre>
+
+<p>This is identical to the syntax for <a href="./lang_resources_advanced.html#adding-or-modifying-attributes">adding attributes to an existing resource</a>, but in a derived class, it gains the ability to rewrite resources instead of just adding to them. Note that you can also use <a href="./lang_data_resource_reference.html#multi-resource-references">multi-resource references</a> here.</p>
+
+<p>You can remove an attribute’s previous value without setting a new one by overriding it with the special value <a href="./lang_data_undef.html"><code>undef</code></a>:</p>
+
+<pre><code class="language-ruby">class base::freebsd inherits base::unix {
+  File['/etc/passwd'] {
+    group =&gt; undef,
+  }
+}
+</code></pre>
+
+<p>This causes the attribute to be unmanaged by Puppet.</p>
+
+<blockquote>
+  <p><strong>Note:</strong> If a base class declares other classes with the resource-like syntax, a class derived from it cannot override the class parameters of those inner classes. This is a known bug.</p>
+</blockquote>
+
+<h4 id="appending-to-resource-attributes">Appending to Resource Attributes</h4>
+
+<p>Some resource attributes (such as the <a href="./lang_relationships.html">relationship metaparameters</a>) can accept multiple values in an array. When overriding attributes in a derived class, you can add to the existing values instead of replacing them by using the <code>+&gt;</code> (“plusignment”) keyword instead of the standard <code>=&gt;</code> hash rocket:</p>
+
+<pre><code class="language-ruby">class apache {
+  service {'apache':
+    require =&gt; Package['httpd'],
+  }
+}
+
+class apache::ssl inherits apache {
+  # host certificate is required for SSL to function
+  Service['apache'] {
+    require +&gt; [ File['apache.pem'], File['httpd.conf'] ],
+    # Since `require` will retain its previous values, this is equivalent to:
+    # require =&gt; [ Package['httpd'], File['apache.pem'], File['httpd.conf'] ],
+  }
+}
+</code></pre>
+
+<h2 id="declaring-classes">Declaring Classes</h2>
+
+<p><strong>Declaring</strong> a class in a Puppet manifest adds all of its resources to the catalog. You can declare classes in <a href="./lang_node_definitions.html">node definitions</a>, at top scope in the <a href="./dirs_manifest.html">site manifest</a>, and in other classes or <a href="./lang_defined_types.html">defined types</a>. Declaring classes isn’t the only way to add them to the catalog; you can also <a href="#assigning-classes-from-an-enc">assign classes to nodes with an ENC</a>.</p>
+
+<p>Classes are singletons — although a given class can have very different behavior depending on how its parameters are set, the resources in it will only be evaluated <strong>once per compilation.</strong></p>
+
+<h3 id="include-like-vs-resource-like">Include-Like vs. Resource-Like</h3>
+
+<p>Puppet has two main ways to declare classes: include-like and resource-like.</p>
+
+<blockquote>
+  <p><strong>Note:</strong> These two behaviors <strong>should not be mixed</strong> for a given class. Puppet’s behavior when declaring or assigning a class with both styles is undefined, and will sometimes work and sometimes cause compilation failures.</p>
+</blockquote>
+
+<h4 id="include-like-behavior">Include-Like Behavior</h4>
+
+<p>The <code>include</code>, <code>require</code>, <code>contain</code>, and <code>hiera_include</code> functions let you safely declare a class <strong>multiple times;</strong> no matter how many times you declare it, a class will only be added to the catalog once. This can allow classes or defined types to manage their own dependencies, and lets you create overlapping “role” classes where a given node can have more than one role.</p>
+
+<p>Include-like behavior relies on <a href="/hiera/latest/puppet.html">external data</a> and defaults for class parameter values, which allows the external data source to act like cascading configuration files for all of your classes. When a class is declared, Puppet will try the following for each of its parameters:</p>
+
+<ol>
+  <li>Request a value from <a href="/hiera/latest/puppet.html">the external data source</a>, using the key <code>&lt;class name&gt;::&lt;parameter name&gt;</code>. (For example, to get the <code>apache</code> class’s <code>version</code> parameter, Puppet would search for <code>apache::version</code>.)</li>
+  <li>Use the default value.</li>
+  <li>Fail compilation with an error if no value can be found.</li>
+</ol>
+
+<h4 id="resource-like-behavior">Resource-like Behavior</h4>
+
+<p>Resource-like class declarations require that you <strong>only declare a given class once.</strong> They allow you to override class parameters at compile time, and will fall back to <a href="/hiera/latest/puppet.html">external data</a> for any parameters you don’t override.  When a class is declared, Puppet will try the following for each of its parameters:</p>
+
+<ol>
+  <li>Use the override value from the declaration, if present.</li>
+  <li>Request a value from <a href="/hiera/latest/puppet.html">the external data source</a>, using the key <code>&lt;class name&gt;::&lt;parameter name&gt;</code>. (For example, to get the <code>apache</code> class’s <code>version</code> parameter, Puppet would search for <code>apache::version</code>.)</li>
+  <li>Use the default value.</li>
+  <li>Fail compilation with an error if no value can be found.</li>
+</ol>
+
+<blockquote>
+  <p><strong>Aside: Why Do Resource-Like Declarations Have to Be Unique?</strong></p>
+
+  <p>This is necessary to avoid paradoxical or conflicting parameter values. Since overridden values from the class declaration always win, are computed at compile-time, and do not have a built-in hierarchy for resolving conflicts, allowing repeated overrides would cause catalog compilation to be unreliable and evaluation-order dependent.</p>
+
+  <p>This was the original reason for adding external data bindings to include-like declarations: since external data is set <strong>before</strong> compile-time and has a <strong>fixed hierarchy,</strong> the compiler can safely rely on it without risk of conflicts.</p>
+</blockquote>
+
+<h3 id="using-include">Using <code>include</code></h3>
+
+<p>The <code>include</code> <a href="./lang_functions.html">function</a> is the standard way to declare classes.</p>
+
+<pre><code class="language-ruby">include base::linux
+include base::linux # no additional effect; the class is only declared once
+
+include Class['base::linux'] # including a class reference
+
+include base::linux, apache # including a list
+
+$my_classes = ['base::linux', 'apache']
+include $my_classes # including an array
+</code></pre>
+
+<p>The <code>include</code> function uses <a href="#include-like-behavior">include-like behavior</a>. (Multiple declarations OK; relies on external data for parameters.) It can accept:</p>
+
+<ul>
+  <li>A single class name (like <code>apache</code>) or class reference (like <code>Class['apache']</code>)</li>
+  <li>A comma-separated list of class names or class references</li>
+  <li>An array of class names or class references</li>
+</ul>
+
+<h3 id="using-require">Using <code>require</code></h3>
+
+<p>The <code>require</code> function (not to be confused with the <a href="./lang_relationships.html"><code>require</code> metaparameter</a>) declares one or more classes, then causes them to become a <a href="./lang_relationships.html">dependency</a> of the surrounding container.</p>
+
+<pre><code class="language-ruby">define apache::vhost (Integer $port, String $docroot, String $servername, String $vhost_name) {
+  require apache
+  ...
+}
+</code></pre>
+
+<p>In the above example, Puppet will ensure that every resource in the <code>apache</code> class gets applied before every resource in <strong>any</strong> <code>apache::vhost</code> instance.</p>
+
+<p>The <code>require</code> function uses <a href="#include-like-behavior">include-like behavior</a>. (Multiple declarations OK; relies on external data for parameters.) It can accept:</p>
+
+<ul>
+  <li>A single class name (like <code>apache</code>) or class reference (like <code>Class['apache']</code>)</li>
+  <li>A comma-separated list of class names or class references</li>
+  <li>An array of class names or class references</li>
+</ul>
+
+<h3 id="using-contain">Using <code>contain</code></h3>
+
+<p>The <code>contain</code> function is meant to be used <em>inside another class definition.</em> It declares one or more classes, then causes them to become <a href="./lang_containment.html">contained</a> by the surrounding class. For details, <a href="./lang_containment.html#containing-classes">see the “Containing Classes” section of the Containment page.</a></p>
+
+<pre><code class="language-ruby">class ntp {
+  file { '/etc/ntp.conf':
+    ...
+    require =&gt; Package['ntp'],
+    notify  =&gt; Class['ntp::service'],
+  }
+  contain ntp::service
+  package { 'ntp':
+    ...
+  }
+}
+</code></pre>
+
+<p>In the above example, any resource that forms a <code>before</code> or <code>require</code> relationship with class <code>ntp</code> will also be applied before or after class <code>ntp::service</code>, respectively.</p>
+
+<p>The <code>contain</code> function uses <a href="#include-like-behavior">include-like behavior</a>. (Multiple declarations OK; relies on external data for parameters.) It can accept:</p>
+
+<ul>
+  <li>A single class name (like <code>apache</code>) or class reference (like <code>Class['apache']</code>)</li>
+  <li>A comma-separated list of class names or class references</li>
+  <li>An array of class names or class references</li>
+</ul>
+
+<h3 id="using-hierainclude">Using <code>hiera_include</code></h3>
+
+<p>The <code>hiera_include</code> function requests a list of class names from <a href="/hiera/latest">Hiera</a>, then declares all of them. Since it uses the <a href="/hiera/latest/lookup_types.html#array-merge">array lookup type</a>, it will get a combined list that includes classes from <strong>every level</strong> of the <a href="/hiera/latest/hierarchy.html">hierarchy</a>. This allows you to abandon <a href="./lang_node_definitions.html">node definitions</a> and use Hiera like a lightweight ENC.</p>
+
+<pre><code class="language-yaml"># /etc/puppetlabs/puppet/hiera.yaml
+...
+hierarchy:
+  - "%{::clientcert}"
+  - common
+
+# /etc/puppetlabs/puppet/hieradata/web01.example.com.yaml
+---
+classes:
+  - apache
+  - memcached
+  - wordpress
+
+# /etc/puppetlabs/puppet/hieradata/common.yaml
+---
+classes:
+  - base::linux
+</code></pre>
+
+<pre><code class="language-ruby"># /etc/puppetlabs/puppet/manifests/site.pp
+hiera_include(classes)
+</code></pre>
+
+<p>On the node <code>web01.example.com</code>, the example above would declare the classes <code>apache</code>, <code>memcached</code>, <code>wordpress</code>, and <code>base::linux</code>. On other nodes, it would only declare <code>base::linux</code>.</p>
+
+<p>The <code>hiera_include</code> function uses <a href="#include-like-behavior">include-like behavior</a>. (Multiple declarations OK; relies on external data for parameters.) It accepts a single lookup key.</p>
+
+<h3 id="using-resource-like-declarations">Using Resource-Like Declarations</h3>
+
+<p>Resource-like declarations look like <a href="./lang_resources.html">normal resource declarations</a>, using the special <code>class</code> pseudo-resource type.</p>
+
+<pre><code class="language-ruby"># Specifying the "version" parameter:
+class {'apache':
+  version =&gt; '2.2.21',
+}
+# Declaring a class with no parameters:
+class {'base::linux':}
+</code></pre>
+
+<p>Resource-like declarations use <a href="#resource-like-behavior">resource-like behavior</a>. (Multiple declarations prohibited; parameters can be overridden at compile-time.) You can provide a value for any class parameter by specifying it as resource attribute; any parameters not specified will follow the normal external/default/fail lookup path.</p>
+
+<p>In addition to class-specific parameters, you can also specify a value for any <a href="./lang_resources.html#metaparameters">metaparameter</a>. In such cases, every resource contained in the class will also have that metaparameter:</p>
+
+<pre><code class="language-ruby"># Cause the entire class to be noop:
+class {'apache':
+  noop =&gt; true,
+}
+</code></pre>
+
+<p>However, note that:</p>
+
+<ul>
+  <li>Any resource can specifically override metaparameter values received from its container.</li>
+  <li>Metaparameters which can take more than one value (like the <a href="./lang_relationships.html">relationship</a> metaparameters) will merge the values from the container and any resource-specific values.</li>
+</ul>
+
+<h2 id="assigning-classes-from-an-enc">Assigning Classes From an ENC</h2>
+
+<p>Classes can also be assigned to nodes by <a href="/guides/external_nodes.html">external node classifiers</a> and <a href="http://projects.puppetlabs.com/projects/1/wiki/Ldap_Nodes">LDAP node data</a>. Note that most ENCs assign classes with include-like behavior, and some ENCs assign them with resource-like behavior. See the <a href="/guides/external_nodes.html">documentation of the ENC interface</a> or the documentation of your specific ENC for complete details.</p>
+
+<h2 id="appendix-smart-parameter-defaults">Appendix: Smart Parameter Defaults</h2>
+
+<p>This design pattern can make for significantly cleaner code while enabling some really sophisticated behavior around default values.</p>
+
+<pre><code class="language-ruby"># /etc/puppet/modules/webserver/manifests/params.pp
+
+class webserver::params {
+  $packages = $operatingsystem ? {
+    /(?i-mx:ubuntu|debian)/        =&gt; 'apache2',
+    /(?i-mx:centos|fedora|redhat)/ =&gt; 'httpd',
+  }
+  $vhost_dir = $operatingsystem ? {
+    /(?i-mx:ubuntu|debian)/        =&gt; '/etc/apache2/sites-enabled',
+    /(?i-mx:centos|fedora|redhat)/ =&gt; '/etc/httpd/conf.d',
+  }
+}
+
+# /etc/puppet/modules/webserver/manifests/init.pp
+
+class webserver(
+  String $packages  = $webserver::params::packages,
+  String $vhost_dir = $webserver::params::vhost_dir
+) inherits webserver::params {
+
+ package { $packages: ensure =&gt; present }
+
+ file { 'vhost_dir':
+   path   =&gt; $vhost_dir,
+   ensure =&gt; directory,
+   mode   =&gt; '0750',
+   owner  =&gt; 'www-data',
+   group  =&gt; 'root',
+ }
+}
+</code></pre>
+
+<p>To summarize what’s happening here: When a class inherits from another class, it implicitly declares the base class. Since the base class’s local scope already exists before the new class’s parameters get declared, those parameters can be set based on information in the base class.</p>
+
+<p>This is functionally equivalent to doing the following:</p>
+
+<pre><code class="language-ruby"># /etc/puppet/modules/webserver/manifests/init.pp
+
+class webserver(String $packages = 'UNSET', String $vhost_dir = 'UNSET' ) {
+
+ if $packages == 'UNSET' {
+   $real_packages = $operatingsystem ? {
+     /(?i-mx:ubuntu|debian)/        =&gt; 'apache2',
+     /(?i-mx:centos|fedora|redhat)/ =&gt; 'httpd',
+   }
+ }
+ else {
+    $real_packages = $packages
+ }
+
+ if $vhost_dir == 'UNSET' {
+   $real_vhost_dir = $operatingsystem ? {
+     /(?i-mx:ubuntu|debian)/        =&gt; '/etc/apache2/sites-enabled',
+     /(?i-mx:centos|fedora|redhat)/ =&gt; '/etc/httpd/conf.d',
+   }
+ }
+ else {
+    $real_vhost_dir = $vhost_dir
+}
+
+ package { $real_packages: ensure =&gt; present }
+
+ file { 'vhost_dir':
+   path   =&gt; $real_vhost_dir,
+   ensure =&gt; directory,
+   mode   =&gt; '0750',
+   owner  =&gt; 'www-data',
+   group  =&gt; 'root',
+ }
+}
+</code></pre>
+
+<p>… but it’s a significant readability win, especially if the amount of logic or the number of parameters gets any higher than what’s shown in the example.</p>
+
