@@ -2,7 +2,7 @@ require 'nokogiri'
 require 'pp'
 require 'punkt-segmenter'
 
-important_settings = File.read('/Users/nick/Documents/puppet-docs/output/puppet/4.2/reference/config_important_settings.html', encoding: 'utf-8')
+important_settings = File.read(File.expand_path('./config_important_settings.html'), encoding: 'utf-8')
 parsed = Nokogiri::HTML::DocumentFragment.parse(important_settings)
 tokenizer = Punkt::SentenceTokenizer.new(important_settings)
 
