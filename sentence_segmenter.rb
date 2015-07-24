@@ -1,3 +1,17 @@
+#!/usr/bin/env ruby
+
+# > sentence_segmenter.rb ./file1.html ./file2.html ./file3.html
+
+# Sentence segmenter -- splits <p> elements into something like
+# <div class="real-paragraph">
+#    <p class="temp-sentence"> ... </p>
+#    <p class="temp-sentence"> ... </p>
+# </div>
+
+# This script expects any number of HTML fragment files as its argument(s). It
+# will mangle the content and update it in-place, destroying the previous
+# content of the files.
+
 require 'nokogiri'
 require 'punkt-segmenter'
 
@@ -22,8 +36,14 @@ def segment_on_sentences(text)
   parsed.to_html
 end
 
-important_settings = File.read(File.expand_path('./config_important_settings.html'), encoding: 'utf-8')
+ARGV.each do |filename|
+  full_path = File.expand_path(filename)
+  print "Mangling #{full_path}... "
+  mangled_html = segment_on_sentences( File.read(full_path, encoding: 'utf-8') )
+  File.open(full_path, 'w') do |f|
+    f.write(mangled_html)
+  end
+  print " done.\n"
+end
 
-
-print segment_on_sentences(important_settings)
 
