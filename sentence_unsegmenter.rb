@@ -1,3 +1,18 @@
+#!/usr/bin/env ruby
+
+# > sentence_unsegmenter.rb ./file1.html ./file2.html ./file3.html
+
+# Sentence unsegmenter -- collapses a mangled structure like:
+# <div class="real-paragraph">
+#    <p class="temp-sentence"> ... </p>
+#    <p class="temp-sentence"> ... </p>
+# </div>
+# ... into a normal <p> ... </p> element.
+
+# This script expects any number of HTML fragment files as its argument(s). It
+# will un-mangle the content and update it in-place, destroying the previous
+# content of the files.
+
 require 'nokogiri'
 
 def unsegment_paragraphs(text)
@@ -19,7 +34,13 @@ def unsegment_paragraphs(text)
   parsed.to_html
 end
 
-important_settings = File.read(File.expand_path('./for_use_puppet-documentation_important-settings-replace-p-with-div-and-phtml_ja_JP.html'), encoding: 'utf-8')
+ARGV.each do |filename|
+  full_path = File.expand_path(filename)
+  print "Un-mangling #{full_path}... "
+  mangled_html = unsegment_paragraphs( File.read(full_path, encoding: 'utf-8') )
+  File.open(full_path, 'w') do |f|
+    f.write(mangled_html)
+  end
+  print " done.\n"
+end
 
-
-print unsegment_paragraphs(important_settings)
