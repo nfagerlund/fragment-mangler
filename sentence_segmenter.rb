@@ -1,19 +1,23 @@
 require 'nokogiri'
-require 'pp'
 require 'punkt-segmenter'
 
-important_settings = File.read(File.expand_path('./config_important_settings.html'), encoding: 'utf-8')
-parsed = Nokogiri::HTML::DocumentFragment.parse(important_settings)
-tokenizer = Punkt::SentenceTokenizer.new(important_settings)
+def segment_on_sentences(text)
+  parsed = Nokogiri::HTML::DocumentFragment.parse(text)
+  tokenizer = Punkt::SentenceTokenizer.new(text)
 
-all_paragraphs = parsed.css('p')
+  all_paragraphs = parsed.css('p')
 
+  all_paragraphs.each do |graf|
+    sentences = tokenizer.sentences_from_text(graf.inner_html, :output => :sentences_text)
+    new_div = '<div class="real-paragraph"> <p class="temp-sentence">' << sentences.join('</p> <p class="temp-sentence">') << '</p></div>'
+    graf.replace(new_div)
+  end
 
-all_paragraphs.each do |graf|
-  sentences = tokenizer.sentences_from_text(graf.inner_html, :output => :sentences_text)
-  new_div = '<div class="real-paragraph"> <p class="temp-sentence">' << sentences.join('</p> <p class="temp-sentence">') << '</p></div>'
-  graf.replace(new_div)
+  parsed.to_html
 end
 
-print parsed.to_html
+important_settings = File.read(File.expand_path('./config_important_settings.html'), encoding: 'utf-8')
+
+
+print segment_on_sentences(important_settings)
 
